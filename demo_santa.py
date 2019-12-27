@@ -25,8 +25,6 @@ def main(args, config):
 
     print("# Load santa hat PNG img")
     mask_img = cv2.imread(config.mask_img_path, -1)
-    # print("debug, ", mask_img.shape)
-    # print(mask_img)
 
     if args.face_detector == "fb":
         torch.set_default_tensor_type(config.torch_def_tensor)
@@ -132,9 +130,7 @@ def detect_with_faceboxes(net, frame, thresh, device, mask_img, args):
                 if args.rect:
                     cv2.rectangle(frame, left_up, right_bottom, (0, 0, 255), 2)
                 if args.santa:
-                    print("DEBUG: before", frame.shape)
                     frame = combine_img(frame, mask_img, left_up, right_bottom)
-                    print("DEBUG: after", frame.shape)
 
     t2 = time.time()
     print("#### Elapsed time for detecting one frame:{}".format(t2 - t1))
@@ -177,14 +173,6 @@ def combine_img(frame, mask_img, left_up, right_bottom):
 
     mask_img = mask_img[:, :, :3]
     frame_float = frame.astype(np.float64)
-
-    print(
-        "DEBUG: ",
-        frame_float[
-            left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]
-        ].shape,
-    )
-    print("DEBUG: ", mask[-mheight - 1 : -1, :].shape)
 
     frame_float[left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]] *= (
         1.0 - mask[-mheight - 1 : -1, :]
