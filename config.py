@@ -30,7 +30,7 @@ class Config(object):
     )
 
     # dumped model path for face detection
-    fb_path = "Faceboxes/weights/Faceboxes.pth"
+    fb_path = "weights/Faceboxes.pth"
     fb_thresh = 0.5
 
     mask_img_path = "img/santa_hat.png"

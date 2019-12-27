@@ -13,24 +13,28 @@ import torch.backends.cudnn as cudnn
 
 from config import get_config
 
-from Faceboxes.faceboxes import FaceBox
-from Faceboxes.data.config import cfg
-from Faceboxes.utils.augmentations import FaceBoxesBasicTransform
+from faceboxes import FaceBox
+from data.config import cfg
+from utils.augmentations import FaceBoxesBasicTransform
 
 
 def main(args, config):
     print("# Startng recording with a camera")
+    # cap = cv2.VideoCapture(config.camera_id)
     cap = cv2.VideoCapture(0)
 
     print("# Load santa hat PNG img")
-    mask_img = cv2.imread(config.mask_img_path)
+    mask_img = cv2.imread(config.mask_img_path, -1)
+    # print("debug, ", mask_img.shape)
+    # print(mask_img)
 
     if args.face_detector == "fb":
         torch.set_default_tensor_type(config.torch_def_tensor)
 
         fb = get_faceboxes(config.fb_path)
         fb.to(config.device)
-        cudnn.benchmark = True
+        if config.use_cuda:
+            cudnn.benchmark = True
         print("# Faceboxes face detection model is ready")
 
     elif args.face_detector == "opencv":
@@ -51,15 +55,16 @@ def main(args, config):
         )
         frame = cv2.resize(frame, frame_size, interpolation=cv2.INTER_AREA)
 
-        # Face detect
+        # Face detect with OpenCV's cascade_detector
         if args.face_detector == "opencv":
             try:
                 left_up, right_bottom = detect_with_cascade(
                     frame, cascade, mask_img, args
                 )
             except Exception as e:
-                print("#### something happened on detect_with_cascade", e.args)
+                print("#### No Face detected by detect_with_cascade", e.args)
 
+        # Face detect with Faceboxes
         elif args.face_detector == "fb":
             try:
                 left_up, right_bottom = detect_with_faceboxes(
@@ -104,9 +109,9 @@ def detect_with_cascade(frame, cascade, mask_img, args):
     return left_up, right_bottom
 
 
-def detect_with_faceboxes(net, img, thresh, device, mask_img, args):
-    img = np.array(img, copy=True)
-    img_to_net = cv2.cvtColor(img.copy(), cv2.COLOR_BGR2RGB)
+def detect_with_faceboxes(net, frame, thresh, device, mask_img, args):
+    frame = np.array(frame, copy=True)
+    img_to_net = cv2.cvtColor(frame.copy(), cv2.COLOR_BGR2RGB)
     height, width, _ = img_to_net.shape
 
     x = FaceBoxesBasicTransform(img_to_net)
@@ -125,14 +130,16 @@ def detect_with_faceboxes(net, img, thresh, device, mask_img, args):
                 pt = (detections[0, i, j, 1:] * scale).cpu().numpy().astype(int)
                 left_up, right_bottom = (pt[0], pt[1]), (pt[2], pt[3])
                 if args.rect:
-                    cv2.rectangle(img, left_up, right_bottom, (0, 0, 255), 2)
+                    cv2.rectangle(frame, left_up, right_bottom, (0, 0, 255), 2)
                 if args.santa:
-                    img = combine_img(img, mask_img, left_up, right_bottom)
+                    print("DEBUG: before", frame.shape)
+                    frame = combine_img(frame, mask_img, left_up, right_bottom)
+                    print("DEBUG: after", frame.shape)
 
     t2 = time.time()
     print("#### Elapsed time for detecting one frame:{}".format(t2 - t1))
 
-    cv2.imshow("frame", img)
+    cv2.imshow("frame", frame)
     return left_up, right_bottom
 
 
@@ -143,28 +150,53 @@ def get_faceboxes(model_path):
     return net
 
 
-def combine_img(frame, img, x, y):
+def scale_to_width(img, width):
+    scale = width / img.shape[1]
+    return cv2.resize(img, dsize=None, fx=scale, fy=scale)
+
+
+# def combine_img(frame, img, x, y):
+def combine_img(frame, mask_img, left_up, right_bottom):
     # https://cif-lab.hatenadiary.jp/entry/2018/05/06/214829
-    height_over_check = lambda x: self.HEIGHT if x > self.HEIGHT else x
-    width_over_check = lambda x: self.WIDTH if x > self.WIDTH else x
+    # height_over_check = lambda x: self.HEIGHT if x > self.HEIGHT else x
+    # width_over_check = lambda x: self.WIDTH if x > self.WIDTH else x
 
-    img = cv2.resize(img, (int(self.WIDTH / 1.2), int(self.HEIGHT / 1.2)))
-    height, width = img.shape[:2]
+    # img = cv2.resize(img, (int(self.WIDTH / 1.2), int(self.HEIGHT / 1.2)))
+    img_width = right_bottom[0] - left_up[0]
+    mask_img = scale_to_width(mask_img, img_width)
+    mheight, mwidth = mask_img.shape[:2]
 
-    ex = width_over_check(x + width)
-    ey = height_over_check(y + height)
+    mheight = left_up[1] if (left_up[1] - mheight) < 0 else mheight
 
-    mask = img[:, :, 3]  # これでアルファチャンネルのみの行列が抽出。
+    # ex = width_over_check(x + width)
+    # ey = height_over_check(y + height)
+
+    mask = mask_img[:, :, 3]  # これでアルファチャンネルのみの行列が抽出。
     mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     mask = mask / 255.0
 
-    img = img[:, :, :3]
+    mask_img = mask_img[:, :, :3]
     frame_float = frame.astype(np.float64)
 
-    frame_float[y:ey, x:ex] *= 1 - mask[: (ey - y), : (ex - x)]
-    frame_float[y:ey, x:ex] += (
-        img[: (ey - y), : (ex - x)] * mask[: (ey - y), : (ex - x)]
+    print(
+        "DEBUG: ",
+        frame_float[
+            left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]
+        ].shape,
     )
+    print("DEBUG: ", mask[-mheight - 1 : -1, :].shape)
+
+    frame_float[left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]] *= (
+        1.0 - mask[-mheight - 1 : -1, :]
+    )
+    frame_float[left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]] += (
+        mask_img[-mheight - 1 : -1, :] * mask[-mheight - 1 : -1, :]
+    )
+
+    # frame_float[y:ey, x:ex] *= 1 - mask[: (ey - y), : (ex - x)]
+    # frame_float[y:ey, x:ex] += (
+    #    img[: (ey - y), : (ex - x)] * mask[: (ey - y), : (ex - x)]
+    # )
 
     frame_float = frame_float.astype(np.uint8)
     return frame_float
