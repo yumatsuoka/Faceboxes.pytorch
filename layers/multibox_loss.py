@@ -1,4 +1,4 @@
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
 from __future__ import division
 from __future__ import absolute_import
@@ -8,23 +8,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from data.config import cfg
-from torch.autograd import Variable
-
-from .bbox_utils import match, log_sum_exp, match
+from .bbox_utils import log_sum_exp, match
 
 
 class MultiBoxLoss(nn.Module):
     """SSD Weighted Loss Function
     Compute Targets:
         1) Produce Confidence Target Indices by matching  ground truth boxes
-           with (default) 'priorboxes' that have jaccard index > threshold parameter
-           (default threshold: 0.5).
+            with (default) 'priorboxes' that have jaccard index > threshold parameter
+            (default threshold: 0.5).
         2) Produce localization target by 'encoding' variance into offsets of ground
-           truth boxes and their matched  'priorboxes'.
+            truth boxes and their matched  'priorboxes'.
         3) Hard negative mining to filter the excessive number of negative examples
-           that comes with using a large number of default bounding boxes.
-           (default negative:positive ratio 3:1)
+            that comes with using a large number of default bounding boxes.
+            (default negative:positive ratio 3:1)
     Objective Loss:
         L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
         Where, Lconf is the CrossEntropy Loss and Lloc is the SmoothL1 Loss
@@ -48,25 +45,33 @@ class MultiBoxLoss(nn.Module):
     def forward(self, predictions, targets):
         loc_data, conf_data, priors = predictions
         num = loc_data.size(0)
-        priors = priors[:loc_data.size(1), :]
+        priors = priors[: loc_data.size(1), :]
         num_priors = priors.size(0)
-        num_classes = self.num_classes
+        # num_classes = self.num_classes
 
         loc_t = torch.Tensor(num, num_priors, 4)
         conf_t = torch.LongTensor(num, num_priors)
-        for idx in xrange(num):
+        for idx in range(num):
             truths = targets[idx][:, :-1].data
             labels = targets[idx][:, -1].data
             defaults = priors.data
-            match(self.threshold, truths, defaults, self.variance, labels,
-                  loc_t, conf_t, idx)
+            match(
+                self.threshold,
+                truths,
+                defaults,
+                self.variance,
+                labels,
+                loc_t,
+                conf_t,
+                idx,
+            )
         if self.use_gpu:
             loc_t = loc_t.cuda()
             conf_t = conf_t.cuda()
 
         # wrap targets
-        loc_t = Variable(loc_t, requires_grad=False)
-        conf_t = Variable(conf_t, requires_grad=False)
+        loc_t = loc_t, requires_grad = False
+        conf_t = conf_t, requires_grad = False
 
         pos = conf_t > 0
         num_pos = pos.sum(dim=1, keepdim=True)
@@ -79,8 +84,7 @@ class MultiBoxLoss(nn.Module):
         loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)
 
         batch_conf = conf_data.view(-1, self.num_classes)
-        loss_c = log_sum_exp(batch_conf) - \
-            batch_conf.gather(1, conf_t.view(-1, 1))
+        loss_c = log_sum_exp(batch_conf) - batch_conf.gather(1, conf_t.view(-1, 1))
 
         loss_c[pos.view(-1, 1)] = 0
         loss_c = loss_c.view(num, -1)
@@ -92,13 +96,12 @@ class MultiBoxLoss(nn.Module):
 
         pos_idx = pos.unsqueeze(2).expand_as(conf_data)
         neg_idx = neg.unsqueeze(2).expand_as(conf_data)
-        conf_p = conf_data[(pos_idx + neg_idx).gt(0)
-                           ].view(-1, self.num_classes)
+        conf_p = conf_data[(pos_idx + neg_idx).gt(0)].view(-1, self.num_classes)
         targets_weighted = conf_t[(pos + neg).gt(0)]
         loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False)
 
         N = num_pos.data.sum()
         loss_l /= N
         loss_c /= N
-        
+
         return loss_l, loss_c
