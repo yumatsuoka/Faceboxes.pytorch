@@ -1,3 +1,24 @@
+## Put a Santa hat on your head in a camera stream  
+Japanese: カメラから取得した画像のうち、顔領域を特定し頭にサンタ帽子を被せるアプリケーション  
+
+Run this.  
+
+```
+python demo_santa.py --face_detector fb --rect --santa  
+```
+
+The santa hat image is  
+
+<div align="center">
+<img src="https://github.com/yumatsuoka/Faceboxes.pytorch/blob/master/img/santa_hat.png" height="100px" alt="santa_hat" >
+</div>
+
+The result is  
+<div align="center">
+<img src="https://github.com/yumatsuoka/Faceboxes.pytorch/blob/master/img/santa_result.png" height="200px" alt="santa_result" >
+</div>
+
+---
 ## FaceBoxes: A CPU Real-time Face Detector with High Accuracy ##
 [A PyTorch Implementation of FaceBoxes: A CPU Real-time Face Detector with High Accuracy](https://arxiv.org/pdf/1708.05234.pdf)
 
@@ -5,9 +26,9 @@
 ### Description
 I train faceboxes with pytorch which approachs the [official code](https://github.com/sfzhang15/FaceBoxes),the final model can be downloaded in [faceboxes.pytorch](https://pan.baidu.com/s/1dsd9FY5JjO0hvx2zsSMStQ), the ap in AFW,PASCAL_FACE and FDDB as following:
 
-| 	AFW     |   PASCAL	|   FDDB   |
-| --------- |-----------| ---------|
-|	98.32   |    96.35  |  95.2	   |
+| AFW   | PASCAL | FDDB |
+| ----- | ------ | ---- |
+| 98.32 | 96.35  | 95.2 |
 
 ### Requirement
 * pytorch 0.3 

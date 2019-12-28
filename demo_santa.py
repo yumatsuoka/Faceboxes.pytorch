@@ -20,10 +20,10 @@ from utils.augmentations import FaceBoxesBasicTransform
 
 def main(args, config):
     print("# Startng recording with a camera")
-    # cap = cv2.VideoCapture(config.camera_id)
     cap = cv2.VideoCapture(0)
 
     print("# Load santa hat PNG img")
+    # put -1 on the second arg., then read the 4th channel of PNG
     mask_img = cv2.imread(config.mask_img_path, -1)
 
     if args.face_detector == "fb":
@@ -151,21 +151,10 @@ def scale_to_width(img, width):
     return cv2.resize(img, dsize=None, fx=scale, fy=scale)
 
 
-# def combine_img(frame, img, x, y):
 def combine_img(frame, mask_img, left_up, right_bottom):
-    # https://cif-lab.hatenadiary.jp/entry/2018/05/06/214829
-    # height_over_check = lambda x: self.HEIGHT if x > self.HEIGHT else x
-    # width_over_check = lambda x: self.WIDTH if x > self.WIDTH else x
-
-    # img = cv2.resize(img, (int(self.WIDTH / 1.2), int(self.HEIGHT / 1.2)))
-    img_width = right_bottom[0] - left_up[0]
-    mask_img = scale_to_width(mask_img, img_width)
+    face_width = right_bottom[0] - left_up[0]
+    mask_img = scale_to_width(mask_img, face_width)
     mheight, mwidth = mask_img.shape[:2]
-
-    mheight = left_up[1] if (left_up[1] - mheight) < 0 else mheight
-
-    # ex = width_over_check(x + width)
-    # ey = height_over_check(y + height)
 
     mask = mask_img[:, :, 3]  # これでアルファチャンネルのみの行列が抽出。
     mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
@@ -174,17 +163,23 @@ def combine_img(frame, mask_img, left_up, right_bottom):
     mask_img = mask_img[:, :, :3]
     frame_float = frame.astype(np.float64)
 
-    frame_float[left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]] *= (
-        1.0 - mask[-mheight - 1 : -1, :]
-    )
-    frame_float[left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]] += (
-        mask_img[-mheight - 1 : -1, :] * mask[-mheight - 1 : -1, :]
-    )
-
-    # frame_float[y:ey, x:ex] *= 1 - mask[: (ey - y), : (ex - x)]
-    # frame_float[y:ey, x:ex] += (
-    #    img[: (ey - y), : (ex - x)] * mask[: (ey - y), : (ex - x)]
-    # )
+    # 画像を貼り付けるときにベース画像からマスク画像が飛び出ないように条件分け
+    if left_up[1] - mheight <= 0:
+        mheight = left_up[1]
+        frame_float[
+            left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]
+        ] *= (1.0 - mask[-mheight:, :])
+        frame_float[
+            left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]
+        ] += (mask_img[-mheight:, :] * mask[-mheight:, :])
+    else:
+        mheight = mheight
+        frame_float[
+            left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]
+        ] *= (1.0 - mask[-mheight:, :])
+        frame_float[
+            left_up[1] - mheight : left_up[1], left_up[0] : right_bottom[0]
+        ] += (mask_img[-mheight:, :] * mask[-mheight:, :])
 
     frame_float = frame_float.astype(np.uint8)
     return frame_float
